@@ -176,6 +176,95 @@ class InterventionServiceTest {
         assertNull(intervention.getTechnician());
     }
 
+    @Test
+    void updateModifiesInterventionFields() {
+        loginAs(managerUser);
+        Intervention intervention = buildIntervention(Status.NOUVELLE, null);
+        when(interventionRepository.findById(100L)).thenReturn(Optional.of(intervention));
+        Category newCategory = new Category();
+        newCategory.setId(21L);
+        newCategory.setName("Imprimante");
+        when(categoryService.find(21L)).thenReturn(newCategory);
+
+        InterventionDtos.UpdateRequest request = new InterventionDtos.UpdateRequest(
+                "Nouveau titre", "Nouvelle description", 21L, Priority.URGENT, "Lyon", null, 90);
+
+        InterventionDtos.InterventionResponse response = interventionService.update(100L, request);
+
+        assertEquals("Nouveau titre", intervention.getTitle());
+        assertEquals(Priority.URGENT, intervention.getPriority());
+        assertEquals("Imprimante", response.categoryName());
+    }
+
+    @Test
+    void assignByClientIsForbidden() {
+        loginAs(clientUser);
+
+        assertThrows(BusinessException.class,
+                () -> interventionService.assign(100L, new InterventionDtos.AssignRequest(50L)));
+    }
+
+    @Test
+    void changeStatusForbiddenForUnassignedTechnician() {
+        User technicianUser = user(3L, "tech@x.fr", Role.TECHNICIAN, "Lucas", "Moreau");
+        loginAs(technicianUser);
+        Intervention intervention = buildIntervention(Status.ASSIGNED, null);
+        when(interventionRepository.findById(100L)).thenReturn(Optional.of(intervention));
+
+        assertThrows(BusinessException.class, () -> interventionService.changeStatus(100L,
+                new InterventionDtos.StatusChangeRequest(Status.ACCEPTED, null)));
+        assertEquals(Status.ASSIGNED, intervention.getStatus());
+    }
+
+    @Test
+    void viewAccessDeniedForAnotherClient() {
+        loginAs(clientUser);
+        User other = user(99L, "autre@x.fr", Role.CLIENT, "Marie", "Bernard");
+        Client otherClient = new Client();
+        otherClient.setId(99L);
+        otherClient.setUser(other);
+        Intervention intervention = buildIntervention(Status.NOUVELLE, null);
+        intervention.setClient(otherClient);
+        when(interventionRepository.findById(100L)).thenReturn(Optional.of(intervention));
+
+        assertThrows(BusinessException.class, () -> interventionService.get(100L));
+    }
+
+    @Test
+    void getThrowsNotFoundForMissingIntervention() {
+        loginAs(managerUser);
+        when(interventionRepository.findById(100L)).thenReturn(Optional.empty());
+
+        assertThrows(com.smartflow.exception.ResourceNotFoundException.class,
+                () -> interventionService.get(100L));
+    }
+
+    @Test
+    void fullHappyPathStatusFlow() {
+        loginAs(managerUser);
+        Intervention intervention = buildIntervention(Status.NOUVELLE, null);
+        when(interventionRepository.findById(100L)).thenReturn(Optional.of(intervention));
+        Technician technician = new Technician();
+        technician.setId(50L);
+        technician.setUser(user(3L, "tech@x.fr", Role.TECHNICIAN, "Lucas", "Moreau"));
+        when(technicianService.find(50L)).thenReturn(technician);
+
+        interventionService.assign(100L, new InterventionDtos.AssignRequest(50L));
+        assertEquals(Status.ASSIGNED, intervention.getStatus());
+
+        interventionService.changeStatus(100L, new InterventionDtos.StatusChangeRequest(Status.ACCEPTED, null));
+        assertEquals(Status.ACCEPTED, intervention.getStatus());
+        interventionService.changeStatus(100L, new InterventionDtos.StatusChangeRequest(Status.IN_PROGRESS, null));
+        assertEquals(Status.IN_PROGRESS, intervention.getStatus());
+        interventionService.changeStatus(100L, new InterventionDtos.StatusChangeRequest(Status.RESOLVED, null));
+        assertEquals(Status.RESOLVED, intervention.getStatus());
+        interventionService.changeStatus(100L, new InterventionDtos.StatusChangeRequest(Status.CLOSED, null));
+        assertEquals(Status.CLOSED, intervention.getStatus());
+
+        // assign (1) + 4 transitions = 5 entrées d'historique
+        verify(historyRepository, org.mockito.Mockito.times(5)).save(any(com.smartflow.entity.InterventionHistory.class));
+    }
+
     private Intervention buildIntervention(Status status, Technician technician) {
         Intervention intervention = new Intervention();
         intervention.setId(100L);

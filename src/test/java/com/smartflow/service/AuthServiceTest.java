@@ -105,4 +105,40 @@ class AuthServiceTest {
 
         assertThrows(BusinessException.class, () -> authService.register(request));
     }
+
+    @Test
+    void loginReturnsAccessAndRefreshTokens() {
+        User user = new User();
+        user.setId(7L);
+        user.setEmail("admin@smartflow.fr");
+        user.setFirstName("Nadia");
+        user.setLastName("Admin");
+        user.setRole(Role.ADMIN);
+        when(userRepository.findByEmailIgnoreCase("admin@smartflow.fr")).thenReturn(java.util.Optional.of(user));
+        when(jwtService.generateAccessToken(any(User.class))).thenReturn("access-token");
+        when(jwtService.generateRefreshToken()).thenReturn("refresh-token");
+        when(jwtProperties.refreshTokenValidityDays()).thenReturn(7L);
+        when(refreshTokenRepository.save(any(com.smartflow.entity.RefreshToken.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AuthDtos.LoginRequest request = new AuthDtos.LoginRequest("admin@smartflow.fr", "Admin@123");
+        AuthDtos.AuthResponse response = authService.login(request);
+
+        assertEquals("access-token", response.accessToken());
+        assertEquals("refresh-token", response.refreshToken());
+        assertEquals(Role.ADMIN, response.user().role());
+        verify(refreshTokenRepository).save(any(com.smartflow.entity.RefreshToken.class));
+    }
+
+    @Test
+    void loginWithInvalidCredentialsThrows() {
+        when(authenticationManager.authenticate(
+                any(org.springframework.security.authentication.UsernamePasswordAuthenticationToken.class)))
+                .thenThrow(new org.springframework.security.authentication.BadCredentialsException("bad"));
+
+        AuthDtos.LoginRequest request = new AuthDtos.LoginRequest("admin@smartflow.fr", "wrong-password");
+        assertThrows(org.springframework.security.authentication.BadCredentialsException.class,
+                () -> authService.login(request));
+        verify(refreshTokenRepository, never()).save(any());
+    }
 }
