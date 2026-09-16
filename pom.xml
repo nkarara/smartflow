@@ -115,6 +115,21 @@
         </dependency>
     </dependencies>
 
+    <profiles>
+        <!-- Profil local : permet de lancer l'application sans PostgreSQL
+             grâce à une base H2 en mémoire (démonstration / développement sans Docker). -->
+        <profile>
+            <id>local</id>
+            <dependencies>
+                <dependency>
+                    <groupId>com.h2database</groupId>
+                    <artifactId>h2</artifactId>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
     <build>
         <plugins>
             <plugin>
