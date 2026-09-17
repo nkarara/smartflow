@@ -21,6 +21,13 @@ import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+/**
+ * Profil métier « technicien » lié à un {@link User} de rôle {@link Role#TECHNICIAN}.
+ *
+ * <p>Contient les informations utilisées par l'<b>affectation automatique</b>
+ * ({@code TechnicianService#suggestFor}) : disponibilité, localisation et
+ * compétences techniques (relation N-N avec {@link Skill}).</p>
+ */
 @Entity
 @Table(name = "technicians")
 @Getter
@@ -30,29 +37,41 @@ import java.util.Set;
 @Builder
 public class Technician {
 
+    /** Identifiant technique auto-généré. */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Compte utilisateur associé (un technicien = un utilisateur). */
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", unique = true)
     private User user;
 
+    /** Spécialité principale affichée (ex. « Génie informatique »). */
     @Column(length = 190)
     private String specialty;
 
+    /** Ville de rattachement — utilisée pour rapprocher le technicien de l'intervention. */
     @Column(length = 120)
     private String location;
 
+    /** Téléphone direct du technicien. */
     @Column(length = 30)
     private String phone;
 
+    /** Disponibilité courante ; un technicien indisponible est pénalisé dans les suggestions. */
     @Builder.Default
     @Column(nullable = false)
     private boolean available = true;
 
+    /** Date d'embauche du technicien. */
     private LocalDate hireDate;
 
+    /**
+     * Compétences du technicien (relation N-N).
+     * L'entité de jointure {@code technician_skills} est gérée automatiquement par Hibernate.
+     * Le chargement est EAGER + initialisé par {@code @Builder.Default} pour éviter le null.
+     */
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
             name = "technician_skills",
