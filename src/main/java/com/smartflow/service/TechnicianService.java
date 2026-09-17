@@ -27,16 +27,32 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Gestion des techniciens.
+ * Gestion des techniciens : CRUD + moteur de <b>suggestion automatique</b>
+ * pour l'affectation des interventions.
+ *
+ * <p>La méthode {@link #suggestFor} attribue un score à chaque technicien selon :
+ * <ol>
+ *   <li>sa disponibilité ;</li>
+ *   <li>la correspondance de localisation avec le site de l'intervention ;</li>
+ *   <li>ses compétences présentes dans le titre/description de l'intervention ;</li>
+ *   <li>sa charge de travail (interventions actives) ;</li>
+ *   <li>la priorité de l'intervention (bonus pour HIGH/URGENT).</li>
+ * </ol>
+ * </p>
  */
 @Service
 @RequiredArgsConstructor
 public class TechnicianService {
 
+    /** Dépôt d'accès aux techniciens. */
     private final TechnicianRepository technicianRepository;
+    /** Dépôt d'accès aux comptes utilisateurs. */
     private final UserRepository userRepository;
+    /** Dépôt d'accès aux compétences. */
     private final SkillRepository skillRepository;
+    /** Dépôt d'accès aux interventions (calcul de charge). */
     private final InterventionRepository interventionRepository;
+    /** Encodeur BCrypt pour les mots de passe des techniciens créés. */
     private final PasswordEncoder passwordEncoder;
 
     @Transactional(readOnly = true)
@@ -131,21 +147,29 @@ public class TechnicianService {
     }
 
     /**
-     * Proposition automatique de technicien selon ses compétences, sa disponibilité,
-     * sa localisation et sa charge de travail (nombre d'interventions en cours).
+     * Proposition automatique de technicien pour une intervention donnée.
+     * Chaque technicien reçoit un score : disponibilité, localisation, compétences,
+     * charge de travail et priorité. La liste est triée du meilleur au moins bon.
+     *
+     * @param intervention l'intervention à traiter
+     * @return les techniciens triés par score décroissant avec les raisons
      */
     @Transactional(readOnly = true)
     public List<InterventionDtos.SuggestionItem> suggestFor(Intervention intervention) {
+        // Texte combiné (titre + description) en minuscules pour comparer les compétences
         String text = (intervention.getTitle() + " " + intervention.getDescription()).toLowerCase();
+        // Statuts considérés comme « actifs » (qui pèsent sur la charge du technicien)
         List<Status> activeStatuses = List.of(Status.ASSIGNED, Status.ACCEPTED, Status.IN_PROGRESS, Status.BLOCKED);
 
         return technicianRepository.findAll().stream()
                 .map(technician -> {
                     int score = 0;
                     List<String> reasons = new ArrayList<>();
+                    // Charge actuelle : nombre d'interventions en cours du technicien
                     long active = interventionRepository.countByTechnicianIdAndStatusIn(
                             technician.getId(), activeStatuses);
 
+                    // 1. Disponibilité : gros bonus/malus
                     if (technician.isAvailable()) {
                         score += 5;
                         reasons.add("Disponible");
@@ -154,6 +178,7 @@ public class TechnicianService {
                         reasons.add("Indisponible");
                     }
 
+                    // 2. Localisation identique → intervention plus rapide
                     if (intervention.getLocation() != null
                             && technician.getLocation() != null
                             && intervention.getLocation().equalsIgnoreCase(technician.getLocation())) {
@@ -161,6 +186,7 @@ public class TechnicianService {
                         reasons.add("Localisation identique (" + technician.getLocation() + ")");
                     }
 
+                    // 3. Compétences : chaque compétence mentionnée dans le texte rapporte 6 points
                     long matchedSkills = technician.getSkills().stream()
                             .filter(skill -> text.contains(skill.getName().toLowerCase()))
                             .count();
@@ -169,11 +195,13 @@ public class TechnicianService {
                         reasons.add("Compétences pertinentes (" + matchedSkills + ")");
                     }
 
+                    // 4. Charge de travail : chaque intervention active retire 2 points (max -10)
                     score -= Math.min(active, 5) * 2;
                     if (active > 0) {
                         reasons.add(active + " intervention(s) en cours");
                     }
 
+                    // 5. Priorité : les urgences méritent un technicien rapidement mobilisable
                     if (intervention.getPriority() == Priority.HIGH) {
                         score += 2;
                     } else if (intervention.getPriority() == Priority.URGENT) {
@@ -188,6 +216,7 @@ public class TechnicianService {
                             active,
                             reasons);
                 })
+                // Tri du meilleur score au plus faible
                 .sorted(Comparator.comparingInt(InterventionDtos.SuggestionItem::score).reversed())
                 .toList();
     }

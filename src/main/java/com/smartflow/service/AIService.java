@@ -65,20 +65,42 @@ public class AIService {
     private static final List<String> HIGH_MARKERS = List.of(
             "haute", "panne", "important", "rapidement", "sans delai", "sans délai");
 
+    /**
+     * Analyse automatique d'une demande : fournit catégorie, type, priorité,
+     * problème probable et temps estimé.
+     * Utilise le LLM si une clé API est configurée, sinon l'analyseur local.
+     *
+     * @param title       titre de la demande (peut être vide)
+     * @param description description du problème du client
+     * @return le résultat de l'analyse structuré
+     */
     public AiDtos.AnalyzeResponse analyze(String title, String description) {
+        // Mode LLM : activé uniquement si la clé API est renseignée
         if (openAiClient.isEnabled()) {
             try {
                 return analyzeWithLlm(title, description);
             } catch (Exception ex) {
+                // Le LLM est indisponible (clé invalide, réseau…) → repli local
                 log.warn("Analyse LLM indisponible, repli sur l'analyseur local : {}", ex.getMessage());
             }
         }
+        // Mode démo/hors ligne : moteur par mots-clés
         return analyzeLocally(title, description);
     }
 
+    /**
+     * Génère un résumé de 2 à 4 phrases à partir du compte rendu du technicien.
+     * Utilise le LLM si disponible, sinon un résumé local par mots-clés.
+     *
+     * @param reportText compte rendu rédigé par le technicien
+     * @param title      titre de l'intervention (contexte)
+     * @param actions    actions réalisées (facultatif)
+     * @return le résumé + le nom de l'analyseur utilisé
+     */
     public AiDtos.SummarizeResponse summarize(String reportText, String title, String actions) {
         if (openAiClient.isEnabled()) {
             try {
+                // Prompt système puis génération du résumé via le LLM
                 String system = "Tu es un assistant qui rédige des résumés concis d'interventions techniques en français.";
                 String prompt = (title != null && !title.isBlank() ? "Titre: " + title + "\n" : "")
                         + "Compte rendu: " + reportText
@@ -91,7 +113,16 @@ public class AIService {
         return new AiDtos.SummarizeResponse(summarizeLocally(reportText, title, actions), "Analyseur local");
     }
 
+    /**
+     * Analyse via le LLM : envoie la description et parse la réponse JSON
+     * attendue ({@code category}, {@code type}, {@code priority}, …).
+     *
+     * @param title       titre de la demande
+     * @param description description du problème
+     * @return le résultat structuré de l'analyse LLM
+     */
     private AiDtos.AnalyzeResponse analyzeWithLlm(String title, String description) {
+        // Prompt système : demande une réponse JSON strictement structurée
         String system = "Tu es un assistant de dépannage informatique. Réponds uniquement en JSON valide "
                 + "avec les champs : category (string), type (string), priority (LOW|MEDIUM|HIGH|URGENT), "
                 + "probableProblem (string, en français), estimatedTimeMinutes (number), reason (string, en français).";
@@ -99,10 +130,11 @@ public class AIService {
         String raw = openAiClient.complete(system, prompt);
         JsonNode node;
         try {
-            node = objectMapper.readTree(raw.trim());
+            node = objectMapper.readTree(raw.trim()); // parse la réponse JSON
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
             throw new IllegalStateException("Réponse LLM non JSON", ex);
         }
+        // Extraction des champs ; résolution de la catégorie en identifiant si elle existe en base
         String categoryName = node.path("category").asText("Général");
         Long categoryId = categoryRepository.findByNameIgnoreCase(categoryName)
                 .map(category -> category.getId()).orElse(null);
@@ -116,9 +148,18 @@ public class AIService {
                 "LLM");
     }
 
+    /**
+     * Analyse locale « hors ligne » : classifie la demande par mots-clés.
+     *
+     * @param title       titre de la demande
+     * @param description description du problème
+     * @return le résultat structuré de l'analyseur local
+     */
     private AiDtos.AnalyzeResponse analyzeLocally(String title, String description) {
+        // Texte normalisé en minuscules pour la recherche de mots-clés
         String text = ((title == null ? "" : title) + " " + description).toLowerCase(Locale.ROOT);
 
+        // Première catégorie dont un mot-clé apparaît dans le texte
         CategoryHint hint = HINTS.stream()
                 .filter(h -> h.keywords().stream().anyMatch(text::contains))
                 .findFirst()
@@ -126,6 +167,7 @@ public class AIService {
                         "Analyse sur site nécessaire pour identifier la cause exacte du problème.", 60, List.of()));
 
         Priority priority = detectPriority(text);
+        // On relie la catégorie détectée à l'entité Category correspondante (si elle existe)
         Long categoryId = categoryRepository.findByNameIgnoreCase(hint.category())
                 .map(category -> category.getId()).orElse(null);
 
@@ -134,6 +176,12 @@ public class AIService {
                 hint.probableProblem(), hint.estimatedMinutes(), "Analyseur local");
     }
 
+    /**
+     * Détecte la priorité selon la présence de marqueurs « urgent » ou « important ».
+     *
+     * @param text texte normalisé de la demande
+     * @return la priorité détectée (URGENT, HIGH ou MEDIUM)
+     */
     private Priority detectPriority(String text) {
         if (URGENT_MARKERS.stream().anyMatch(text::contains)) {
             return Priority.URGENT;
@@ -144,6 +192,12 @@ public class AIService {
         return Priority.MEDIUM;
     }
 
+    /**
+     * Convertit une valeur de priorité texte (issue du LLM) en {@link Priority}.
+     *
+     * @param value la valeur brute (LOW/MEDIUM/HIGH/URGENT)
+     * @return la priorité correspondante (MEDIUM par défaut si inconnue)
+     */
     private Priority parsePriority(String value) {
         return switch (value.trim().toUpperCase(Locale.ROOT)) {
             case "URGENT" -> Priority.URGENT;
