@@ -11,6 +11,7 @@ import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { AdminClientsPage } from "./pages/AdminClientsPage";
 import { AdminTechniciansPage } from "./pages/AdminTechniciansPage";
 import { AdminCategoriesPage } from "./pages/AdminCategoriesPage";
+import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 export default function App() {
@@ -59,6 +60,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["ADMIN"]}>
               <AdminCategoriesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute roles={["ADMIN"]}>
+              <AdminSettingsPage />
             </ProtectedRoute>
           }
         />

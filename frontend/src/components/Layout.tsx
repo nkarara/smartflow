@@ -11,6 +11,7 @@ const NAV_ITEMS: { to: string; label: string; icon: string; roles?: Role[] }[] =
   { to: "/admin/clients", label: "Clients", icon: "🏢", roles: ["ADMIN", "MANAGER"] },
   { to: "/admin/technicians", label: "Techniciens", icon: "👷", roles: ["ADMIN", "MANAGER"] },
   { to: "/admin/categories", label: "Catégories", icon: "🗂️", roles: ["ADMIN"] },
+  { to: "/admin/settings", label: "Paramètres", icon: "⚙️", roles: ["ADMIN"] },
 ];
 
 export function Layout() {

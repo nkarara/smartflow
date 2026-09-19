@@ -117,6 +117,23 @@ function AdminDashboard() {
         </div>
       </div>
 
+      {admin && admin.byCategory.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-4 text-sm font-semibold text-slate-700">Interventions par catégorie</h3>
+          <ResponsiveContainer width="100%" height={240}>
+            <PieChart>
+              <Pie data={admin.byCategory} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                {admin.byCategory.map((_, index) => (
+                  <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                ))}
+              </Pie>
+              <Legend />
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="mb-4 text-sm font-semibold text-slate-700">Performance des techniciens</h3>
         {techPerf.length === 0 ? (

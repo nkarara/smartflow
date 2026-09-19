@@ -1,5 +1,6 @@
 package com.smartflow.configuration;
 
+import com.smartflow.repository.AppSettingRepository;
 import com.smartflow.repository.CategoryRepository;
 import com.smartflow.repository.ClientRepository;
 import com.smartflow.repository.InterventionRepository;
@@ -36,6 +37,8 @@ class DataSeederTest {
     private CategoryRepository categoryRepository;
     @Autowired
     private InterventionRepository interventionRepository;
+    @Autowired
+    private AppSettingRepository appSettingRepository;
 
     @Test
     void seedCreatesDemoData() {
@@ -48,5 +51,6 @@ class DataSeederTest {
         assertEquals(2, clientRepository.count());
         assertTrue(categoryRepository.findAll().size() >= 6);
         assertTrue(interventionRepository.count() >= 5);
+        assertTrue(appSettingRepository.findAll().size() >= 5);
     }
 }

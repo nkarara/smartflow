@@ -80,6 +80,13 @@ export interface CategoryDto {
   icon: string | null;
 }
 
+export interface AppSetting {
+  key: string;
+  value: string;
+  description: string | null;
+  category: string | null;
+}
+
 export interface InterventionDto {
   id: number;
   title: string;

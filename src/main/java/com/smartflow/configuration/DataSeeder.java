@@ -1,5 +1,6 @@
 package com.smartflow.configuration;
 
+import com.smartflow.entity.AppSetting;
 import com.smartflow.entity.Category;
 import com.smartflow.entity.Client;
 import com.smartflow.entity.Intervention;
@@ -10,6 +11,7 @@ import com.smartflow.entity.Skill;
 import com.smartflow.entity.Status;
 import com.smartflow.entity.Technician;
 import com.smartflow.entity.User;
+import com.smartflow.repository.AppSettingRepository;
 import com.smartflow.repository.CategoryRepository;
 import com.smartflow.repository.ClientRepository;
 import com.smartflow.repository.InterventionHistoryRepository;
@@ -45,6 +47,8 @@ public class DataSeeder implements CommandLineRunner {
     private final InterventionRepository interventionRepository;
     private final InterventionHistoryRepository historyRepository;
     private final PasswordEncoder passwordEncoder;
+    /** Dépôt d'accès aux paramètres applicatifs (valeurs par défaut de démo). */
+    private final AppSettingRepository appSettingRepository;
 
     @Value("${smartflow.seed.enabled:true}")
     private boolean enabled;
@@ -106,6 +110,17 @@ public class DataSeeder implements CommandLineRunner {
                 "Lyon", Priority.LOW, tech2, Status.CLOSED, 120, tech2.getUser(),
                 "Poste installé, logiciels paramétrés et utilisateur formé.");
 
+        seedSetting("company.name", "SmartFlow Services",
+                "Nom de l'entreprise affiché dans l'application", "Général");
+        seedSetting("support.email", "support@smartflow.fr",
+                "Adresse email du support client", "Général");
+        seedSetting("sla.defaultResponseHours", "4",
+                "Délai cible (heures) pour l'affectation d'une intervention", "SLA");
+        seedSetting("notifications.enabled", "true",
+                "Active ou désactive l'envoi des notifications", "Notifications");
+        seedSetting("upload.maxSizeMB", "10",
+                "Taille maximale autorisée des pièces jointes (Mo)", "Fichiers");
+
         log.info("Données de démonstration SmartFlow créées.");
     }
 
@@ -131,6 +146,14 @@ public class DataSeeder implements CommandLineRunner {
         User user = userRepository.save(User.builder().email(email).password(passwordEncoder.encode(password))
                 .firstName(firstName).lastName(lastName).role(Role.CLIENT).enabled(true).build());
         return clientRepository.save(Client.builder().user(user).companyName(companyName).city(city).build());
+    }
+
+    /**
+     * Crée un paramètre applicatif par défaut (page « Paramètres » de l'admin).
+     */
+    private void seedSetting(String key, String value, String description, String category) {
+        appSettingRepository.save(AppSetting.builder()
+                .key(key).value(value).description(description).category(category).build());
     }
 
     private void seedIntervention(Client client, Category category, String title, String description,

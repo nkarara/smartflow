@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { CategoryDto, ClientDto, TechnicianDto, UserDto } from "../types";
+import type { AppSetting, CategoryDto, ClientDto, TechnicianDto, UserDto } from "../types";
 
 export const usersApi = {
   list: () => api.get<UserDto[]>("/users").then((r) => r.data),
@@ -63,4 +63,10 @@ export const categoriesApi = {
   update: (id: number, payload: { name: string; description?: string; color?: string; icon?: string }) =>
     api.put<CategoryDto>(`/categories/${id}`, payload).then((r) => r.data),
   remove: (id: number) => api.delete(`/categories/${id}`).then(() => undefined),
+};
+
+export const settingsApi = {
+  list: () => api.get<AppSetting[]>("/settings").then((r) => r.data),
+  update: (key: string, value: string) =>
+    api.put<AppSetting>(`/settings/${key}`, { value }).then((r) => r.data),
 };
