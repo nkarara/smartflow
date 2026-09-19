@@ -23,49 +23,80 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Statistiques et tableaux de bord selon le rôle.
+ * Statistiques et tableaux de bord, déclinés selon le rôle :
+ * <ul>
+ *   <li><b>Admin</b> : vue globale (utilisateurs, clients, techniciens, interventions,
+ *       taux de résolution, séries mensuelles, répartition par catégorie/priorité,
+ *       performance des techniciens) ;</li>
+ *   <li><b>Manager</b> : vue restreinte (totaux + priorités + performance) ;</li>
+ *   <li><b>Technicien</b> : activité personnelle (mes interventions, aujourd'hui,
+ *       en cours, terminées, temps moyen).</li>
+ * </ul>
+ *
+ * <p>Les répartitions sont calculées via des requêtes JPQL d'agrégation
+ * (voir {@link InterventionRepository} : {@code countByMonth}, {@code countByCategory}…).</p>
  */
 @Service
 @RequiredArgsConstructor
 public class DashboardService {
 
+    /** Dépôt d'accès aux interventions (la plupart des compteurs). */
     private final InterventionRepository interventionRepository;
+    /** Dépôt d'accès aux utilisateurs (total comptes). */
     private final UserRepository userRepository;
+    /** Dépôt d'accès aux clients (total clients). */
     private final ClientRepository clientRepository;
+    /** Dépôt d'accès aux techniciens (liste pour la performance). */
     private final TechnicianRepository technicianRepository;
+    /** Service techniciens (résolution du profil courant du technicien). */
     private final TechnicianService technicianService;
 
+    /** Priorités « urgentes » (HIGH + URGENT) pour le compteur d'urgences. */
     private static final List<Priority> URGENT_PRIORITIES = List.of(Priority.HIGH, Priority.URGENT);
+    /** Statuts « terminés » : exclus de la charge, inclus dans les compteurs finaux. */
     private static final List<Status> FINISHED = List.of(Status.RESOLVED, Status.CLOSED);
 
+    /**
+     * Statistiques complètes destinées à l'administrateur :
+     * compteurs globaux + taux de résolution + séries de graphiques + performance.
+     *
+     * @return le DTO de statistiques admin
+     */
     @Transactional(readOnly = true)
     public DashboardDtos.AdminStats adminStats() {
         long total = interventionRepository.count();
         long closed = interventionRepository.countByStatus(Status.CLOSED);
+        // Taux de résolution = interventions clôturées / total
         double resolutionRate = total == 0 ? 0 : (closed * 100.0) / total;
 
+        // Durée moyenne de résolution : écart entre création et clôture des interventions clôturées
         List<Intervention> closedInterventions = interventionRepository.findByStatus(Status.CLOSED);
         Double avgHours = hoursFromMinutes(closedInterventions.stream()
                 .mapToLong(i -> Duration.between(i.getCreatedAt(), i.getClosedAt()).toMinutes())
                 .average());
 
         return new DashboardDtos.AdminStats(
-                userRepository.count(),
-                clientRepository.count(),
-                technicianRepository.count(),
-                total,
-                interventionRepository.countByStatus(Status.IN_PROGRESS),
-                interventionRepository.countByPriorityInAndStatusNotIn(URGENT_PRIORITIES, FINISHED),
-                closed,
-                round(resolutionRate, 1),
-                avgHours,
-                countByMonth(),
-                countByCategory(),
-                countByPriority(),
-                technicianPerformance()
+                userRepository.count(),                                  // total utilisateurs
+                clientRepository.count(),                                // total clients
+                technicianRepository.count(),                            // total techniciens
+                total,                                                   // total interventions
+                interventionRepository.countByStatus(Status.IN_PROGRESS),// en cours
+                interventionRepository.countByPriorityInAndStatusNotIn(URGENT_PRIORITIES, FINISHED), // urgentes ouvertes
+                closed,                                                  // clôturées
+                round(resolutionRate, 1),                                // taux de résolution (%)
+                avgHours,                                                // durée moyenne (h)
+                countByMonth(),                                          // série mensuelle
+                countByCategory(),                                       // répartition par catégorie
+                countByPriority(),                                       // répartition par priorité
+                technicianPerformance()                                  // performance des techniciens
         );
     }
 
+    /**
+     * Statistiques restreintes pour le manager : totaux généraux + priorités + performance.
+     *
+     * @return le DTO de statistiques manager
+     */
     @Transactional(readOnly = true)
     public DashboardDtos.ManagerStats managerStats() {
         long total = interventionRepository.count();
